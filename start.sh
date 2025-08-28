@@ -41,8 +41,10 @@ main() {
     exit 1
   fi
 
-  go run main.go
+  # 将编译好的文件移动到bin目录下
+  sudo mv transh /usr/local/bin
+  sudo chmod +x /usr/local/bin/transh
 
-  echo "回收站启动成功"
-
+  echo "回收站脚本安装成功"
+  echo transh -h
 }

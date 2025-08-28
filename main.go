@@ -7,16 +7,16 @@ import (
 
 func main() {
 	trash.CreateTranshDir()
-	commonds := os.Args
+	commands := os.Args
 	// 参数小于2时，表示语法错误，需要提示用户用法
-	if len(commonds) < 2 {
+	if len(commands) < 2 {
 		trash.Usage()
 		os.Exit(1)
 	}
 
 	// 获取所有参数
-	option := commonds[1]
-	args := commonds[2:]
+	option := commands[1]
+	args := commands[2:]
 	switch option {
 	case "-p", "--put":
 		trash.PutFileToTransh(args)
@@ -36,6 +36,8 @@ func main() {
 	case "-b", "--backup":
 		trash.BackupTranshFile(args)
 		os.Exit(0)
-
+	default:
+		trash.Usage()
+		os.Exit(1)
 	}
 }
