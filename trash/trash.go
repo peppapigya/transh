@@ -1,0 +1,208 @@
+package trash
+
+import (
+	"bufio"
+	"fmt"
+	"os"
+	"os/user"
+	"path/filepath"
+	"strings"
+	"time"
+)
+
+const (
+	// trashDir 回收站目录
+	trashDir = ".local/share/Transh"
+	// transhFilesDir 实际存放文件的目录
+	transhFilesDir = "fileInfos"
+	// trashLogDir 日志目录，用户数据回滚操作
+	trashLogDir = "logs"
+	// defaultTrashBackupDir TRASH_BACKUP_DIR 默认备份目录
+	defaultTrashBackupDir = "backup"
+	// 回收网站备份信息后缀
+	trashBackupSuffix = ".backup"
+)
+
+// 获取所有回收站的目录
+func getAllTranshDir() []string {
+	dir, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Printf("获取用户家目录失败：%v\n", err)
+		os.Exit(1)
+	}
+	baseDir := filepath.Join(dir, trashDir)
+	return []string{
+		baseDir,                                       // 回收站目录
+		filepath.Join(baseDir, transhFilesDir),        // 实际存放文件的目录
+		filepath.Join(baseDir, trashLogDir),           // 日志目录
+		filepath.Join(baseDir, defaultTrashBackupDir), // 默认备份目录
+	}
+}
+
+// Usage 使用方法
+func Usage() {
+	fmt.Println("Linux简易回收站工具")
+	fmt.Println("作者:peppa-pig")
+	fmt.Println("用法:")
+	fmt.Println("  transh -p <文件> <文件>... ：将多个指定的文件放入回收站")
+	fmt.Println("  transh -l 或者 transh --list : 列出回收站中的文件信息")
+	fmt.Println("  transh -c 或者 transh --clear : 清空回收站")
+	fmt.Println("  transh -r <文件> 或者 transh --restore : 从回收站中恢复指定文件")
+	fmt.Println("  transh -d <文件> 或者 transh --delete : 删除回收站中的指定文件")
+	fmt.Println("  transh -b <路径> 或者 transh --backup <路径> : 备份回收站到指定路径（可选）")
+}
+
+// CreateTranshDir 检查回收站是否存在并创建对应目录
+func CreateTranshDir() {
+	// 获取用户根目录
+	userHomeDir, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Printf("获取用户家目录失败：%v\n", err)
+		os.Exit(1)
+	}
+	baseDir := filepath.Join(userHomeDir, trashDir)
+	transhFilesDir := filepath.Join(baseDir, transhFilesDir)
+	trashLogDir := filepath.Join(baseDir, trashLogDir)
+	// 创建目录
+	for _, dir := range []string{baseDir, transhFilesDir, trashLogDir} {
+		// todo 暂定权限为0755
+		if err := os.MkdirAll(dir, 0755); os.IsNotExist(err) {
+			fmt.Printf("创建目录失败 %s: %v\n", dir, err)
+			os.Exit(1)
+		}
+	}
+}
+
+// PutFileToTransh 将文件放入回收站
+func PutFileToTransh(args []string) {
+	if checkArgsIsEmpty(args) {
+		fmt.Printf("需要输入指定文件或目录\n")
+		os.Exit(1)
+	}
+	transhDirs := getAllTranshDir()
+
+	fmt.Println(args)
+	fmt.Println("是否确认将以上文件放入回收？(y/n):")
+	reader := bufio.NewReader(os.Stdin)
+	confirm, _ := reader.ReadString('\n')
+	confirm = strings.TrimSpace(confirm)
+	if confirm != "y" && confirm != "Y" {
+		fmt.Println("操作已取消")
+		os.Exit(0)
+	}
+	for _, file := range args {
+		// 保存文件信息
+		newFilePath, oldFilePath := saveFileInfoToDisk(file, transhDirs[1])
+		// 记录文件的日志信息，todo后续加上目录之后需要加上消息队列去异步写日志，减少用户等待时间
+		saveLogInfoToDisk(newFilePath, oldFilePath, transhDirs[2])
+	}
+}
+
+// GetTrashFileList 获取回收站列表文件,返回文件列表 todo 后续加上缓存以及根据文件名称搜索
+func GetTrashFileList(fileName string) []string {
+	return nil
+}
+
+// ClearTranshFileInfo 清空回收站
+func ClearTranshFileInfo() {}
+
+// RestoreTranshFile 恢复文件
+func RestoreTranshFile(fileNames []string) {}
+
+// DeleteTranshFile 删除回收站文件
+func DeleteTranshFile(fileNames []string) {}
+
+// BackupTranshFile 定期备份回收站文件
+func BackupTranshFile(backupDir []string) {}
+
+// ===================================== 辅助方法 ================================
+
+// 判断参数是否为空
+func checkArgsIsEmpty(args []string) bool {
+	return len(args) == 0
+}
+
+/**
+ * 保存文件信息
+ * @param file 待删除的文件
+ * @param transInfoDir 保存文件信息的目录
+ * @return 保存成功返回新的文件path和原来的文件文件path
+ */
+func saveFileInfoToDisk(file string, transInfoDir string) (string, string) {
+	oldFileAbs := getFileAbs(file)
+	fmt.Printf("正在将文件 %s 放入回收站...\n", oldFileAbs)
+	// 判断文件是否存在
+	fileInfo := getFileIfo(oldFileAbs)
+	// 如果删除的是个目录的话直接返回，
+	if fileInfo.IsDir() {
+		fmt.Printf("错误：%s 该文件是个目录，不是一个文件", oldFileAbs)
+		os.Exit(1)
+	}
+	timestamp := time.Now().Format("20250827151130")
+	newFileName := fmt.Sprintf("%s.%s", fileInfo.Name(), timestamp)
+	newFilePath := filepath.Join(transInfoDir, newFileName)
+	// 将文件写入到回收站目录
+	if err := os.Rename(oldFileAbs, newFilePath); err != nil {
+		fmt.Printf("错误：移动文件 %s 进入回收站失败：%v\n", oldFileAbs, err)
+		os.Exit(1)
+	}
+	return newFilePath, oldFileAbs
+}
+
+/**
+ * 保存日志信息
+ * @param newFilePath 新文件路径
+ * @param logDir 日志保存目录
+ */
+func saveLogInfoToDisk(newFilePath string, oldFilePath string, logDir string) {
+	fmt.Printf("正在保存日志信息...\n")
+	logFileName := fmt.Sprintf("%s.%s", filepath.Base(newFilePath), trashBackupSuffix)
+	logFileContent := fmt.Sprintf("[ %v ]: originFilePath: {%s},targetPath: {%s}operator: {%v}, ",
+		time.Now().Format("2006-01-02 15:04:05"), oldFilePath, newFilePath, getUserName())
+	// 将文件写入日志文件 todo 后续增加超时重试
+	if err := os.WriteFile(filepath.Join(logDir, logFileName), []byte(logFileContent), 0644); err != nil {
+		fmt.Printf("错误:写入日志文件失败: %v\n", err)
+		// 尝试恢复文件
+		os.Rename(newFilePath, oldFilePath)
+		os.Exit(1)
+	}
+}
+
+// 获取文件信息
+func getFileIfo(filePath string) os.FileInfo {
+	fileInfo, err := os.Stat(filePath)
+	// 文件不存在直接退出todo  后续加上回滚之前的数据保证原子性
+	if err != nil {
+		fmt.Printf("错误:文件 %s 不存在: %v\n", filePath, err)
+		os.Exit(1)
+	}
+	return fileInfo
+}
+
+/**
+ * 获取当前用户信息
+ *
+ * @return 当前用户信息
+ */
+func getUserName() *user.User {
+	currentUser, err := user.Current()
+	if err != nil {
+		fmt.Printf("获取用户信息失败: %v\n", err)
+		os.Exit(1)
+	}
+	return currentUser
+}
+
+/*
+ * 获取文件绝对路径
+ * @param file 文件路径
+ * @return 文件绝对路径
+ */
+func getFileAbs(file string) string {
+	fileAbs, err := filepath.Abs(file)
+	if err != nil {
+		fmt.Printf("错误:获取文件 %s 绝对路径失败: %v\n", file, err)
+		os.Exit(1)
+	}
+	return fileAbs
+}
