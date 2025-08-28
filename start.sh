@@ -10,10 +10,42 @@
 check_go() {
   if ! command -v go &> /dev/null; then
     echo "未安装go环境"
-    return 1
+    install_go
+    return "$?"
   fi
   return 0
 }
+
+install_go() {
+  echo "尝试安装go环境..."
+  cnt=4
+  go_url="https://golang.google.cn/dl/go1.25.0.linux-amd64.tar.gz"
+  go_install_dir="/usr/local/software/"
+  while (( cnt >=0 )) ;do
+    wget -O /tmp/ ${go_url}
+    if [ "$?" -eq 0 ]
+    then
+      echo "从{$go_url},下载go安装包成功,正在安装..."
+      # 如果software不存在直接创建目录
+       if [ ! -d "${go_install_dir}" ]; then
+         mkdir -p ${go_install_dir}
+       fi
+      sudo rm -rf ${go_install_dir}/go && tar -C go_install_dir -xzf /tmp/go1.25.0.linux-amd64.tar.gz
+      export PATH=$PATH:${go_install_dir}/go/bin
+
+      echo "go环境安装成功，go的版本信息：${go version}"
+      return 0
+    else
+      echo "从{$go_url},下载go安装包失败，正在进行重试..."
+    fi
+    let cnt--
+  done
+
+  echo "go环境安装失败..."
+  return 1
+}
+
+
 
 # 安装依赖
 install_dep(){
@@ -41,6 +73,7 @@ main() {
     exit 1
   fi
 
+  echo "编译成功，将编译好的二进制文件移动到/usr/local/bin ...."
   # 将编译好的文件移动到bin目录下
   sudo mv transh /usr/local/bin
   sudo chmod +x /usr/local/bin/transh

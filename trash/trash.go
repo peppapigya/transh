@@ -169,7 +169,7 @@ func saveFileInfoToDisk(file string, transInfoDir string) (string, string) {
 func saveLogInfoToDisk(newFilePath string, oldFilePath string, logDir string) {
 	fmt.Printf("正在保存日志信息...\n")
 	logFileName := fmt.Sprintf("%s.%s", filepath.Base(oldFilePath), trashBackupSuffix)
-	logFileContent := fmt.Sprintf("[ %v ]: originFilePath: {%s},targetPath: {%s}operator: {%v} \n",
+	logFileContent := fmt.Sprintf("[ %v ]: originFilePath: {%v},targetPath: {%v}operator: {%s} \n",
 		time.Now().Format("2006-01-02 15:04:05"), oldFilePath, newFilePath, getUserName())
 	// 将文件写入日志文件 todo 后续增加超时重试
 	if err := os.WriteFile(filepath.Join(logDir, logFileName), []byte(logFileContent), 0644); err != nil {
