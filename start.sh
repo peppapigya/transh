@@ -22,7 +22,7 @@ install_go() {
   go_url="https://golang.google.cn/dl/go1.25.0.linux-amd64.tar.gz"
   go_install_dir="/usr/local/software/"
   while (( cnt >=0 )) ;do
-    wget -O /tmp/ ${go_url}
+    wget -O /tmp/go1.25.0.linux-amd64.tar.gz ${go_url}
     if [ "$?" -eq 0 ]
     then
       echo "从{$go_url},下载go安装包成功,正在安装..."
@@ -30,10 +30,10 @@ install_go() {
        if [ ! -d "${go_install_dir}" ]; then
          mkdir -p ${go_install_dir}
        fi
-      sudo rm -rf ${go_install_dir}/go && tar -C go_install_dir -xzf /tmp/go1.25.0.linux-amd64.tar.gz
-      export PATH=$PATH:${go_install_dir}/go/bin
+      sudo rm -rf ${go_install_dir}/go && tar -C ${go_install_dir} -xzf /tmp/go1.25.0.linux-amd64.tar.gz
+      export PATH=$PATH:${go_install_dir}go/bin
 
-      echo "go环境安装成功，go的版本信息：${go version}"
+      echo "go环境安装成功，go的版本信息：" ${go version}
       return 0
     else
       echo "从{$go_url},下载go安装包失败，正在进行重试..."
@@ -81,3 +81,5 @@ main() {
   echo "回收站脚本安装成功"
   echo transh -h
 }
+
+main "$@"

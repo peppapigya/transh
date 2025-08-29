@@ -3,12 +3,18 @@ package trash
 import (
 	"bufio"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
+	"transh/utils"
+
+	"github.com/olekukonko/tablewriter"
+	"github.com/olekukonko/tablewriter/tw"
 )
 
 const (
@@ -21,8 +27,25 @@ const (
 	// defaultTrashBackupDir TRASH_BACKUP_DIR 默认备份目录
 	defaultTrashBackupDir = "backup"
 	// 回收网站备份信息后缀
-	trashBackupSuffix = ".backup"
+	trashBackupSuffix = "backup"
 )
+
+// FileLogInfo 文件日志信息，主要是方便提取文件信息
+type FileLogInfo struct {
+	// 开始信息，主要包括时间
+	BeginInfo string `json:""`
+	FileName  string `json:"file_name"`
+	// 原始文件路径
+	OriginPath string `json:"origin_path"`
+	// 目标文件路径
+	TargetPath string `json:"target_path"`
+	// 操作人
+	Operator user.User `json:"operator"`
+	// 文件大小
+	FileSize int64 `json:"file_size"`
+	// 删除时间
+	DeletionDate string `json:"deletion_date"`
+}
 
 // 获取所有回收站的目录
 func getAllTranshDir() []string {
@@ -84,7 +107,7 @@ func PutFileToTransh(args []string) {
 	transhDirs := getAllTranshDir()
 
 	fmt.Println(args)
-	fmt.Println("是否确认将以上文件放入回收？(y/n):")
+	fmt.Printf("是否确认将以上文件放入回收？(y/n):")
 	reader := bufio.NewReader(os.Stdin)
 	confirm, _ := reader.ReadString('\n')
 	confirm = strings.TrimSpace(confirm)
@@ -94,16 +117,47 @@ func PutFileToTransh(args []string) {
 	}
 	for _, file := range args {
 		// 保存文件信息
-		newFilePath, oldFilePath := saveFileInfoToDisk(file, transhDirs[1])
+		newFilePath, oldFilePath, fileInfo := saveFileInfoToDisk(file, transhDirs[1])
 		// 记录文件的日志信息，todo后续加上目录之后需要加上消息队列去异步写日志，减少用户等待时间
-		saveLogInfoToDisk(newFilePath, oldFilePath, transhDirs[2])
+		saveLogInfoToDisk(newFilePath, oldFilePath, transhDirs[2], fileInfo)
 	}
 	fmt.Printf("文件放入回收站成功\n")
 }
 
-// GetTrashFileList 获取回收站列表文件,返回文件列表 todo 后续加上缓存以及根据文件名称搜索
-func GetTrashFileList(fileName string) []string {
-	return nil
+// GetTrashFileList 获取回收站列表文件,返回文件列表
+// todo 1.后续加上缓存以及根据文件名称搜索,2. 自定义排序,3.增加分页功能,4.按照时间去排序
+func GetTrashFileList(fileName string) {
+	allTrashDirs := getAllTranshDir()
+	logDir := allTrashDirs[2]
+	// 获取所有文件信息
+	files, err := os.ReadDir(logDir)
+	if err != nil {
+		fmt.Printf("错误：获取回收站文件列表失败：%v\n", err)
+		os.Exit(1)
+	}
+	var fileInfos []FileLogInfo
+	for _, file := range files {
+		// 读取文件最后一行信息
+		if file.IsDir() {
+			continue
+		}
+		// 获取文件路径信息，todo 这里可能会有问题
+		fileAbsPath := filepath.Join(logDir, file.Name())
+		lastFileLogInfo := readLastLineFromFile(fileAbsPath)
+		fileInfos = append(fileInfos, lastFileLogInfo)
+	}
+	//listTitlePrint()
+	//// 格式化输出文件信息
+	//var totalSize int64
+	//for i, fileInfo := range fileInfos {
+	//	totalSize += fileInfo.FileSize
+	//	fmt.Printf("|%v\t|%v\t|%v\t|%v\t|%v\t|%v\t|%v\t|\n",
+	//		i+1, fileInfo.FileName, fileInfo.FileSize, fileInfo.DeletionDate, fileInfo.Operator, fileInfo.OriginPath, fileInfo.TargetPath)
+	//}
+	//// 输出总的文件信息
+	//fmt.Printf("回收站中共有 %v 个文件，总大小为 %v Byte\n", len(fileInfos), totalSize)
+
+	printRecycleBin(fileInfos)
 }
 
 // ClearTranshFileInfo 清空回收站
@@ -121,7 +175,6 @@ func RestoreTranshFile(fileNames []string) {
 			fmt.Printf("错误：回收站没有对应的文件，文件：{%s},错误内容：{%v}", file, err)
 			os.Exit(1)
 		}
-
 	}
 }
 
@@ -132,6 +185,42 @@ func DeleteTranshFile(fileNames []string) {}
 func BackupTranshFile(backupDir []string) {}
 
 // ===================================== 辅助方法 ================================
+
+// 获取列表的标题输出
+// todo 后期优化输出格式
+func listTitlePrint() {
+	fmt.Printf("|序号\t|文件名称\t|文件大小\t|删除时间\t|操作人\t|原始路径\t|目标路径\t|\n")
+}
+
+func printRecycleBin(files []FileLogInfo) {
+	table := tablewriter.NewTable(os.Stdout, tablewriter.WithStreaming(tw.StreamConfig{Enable: true}))
+	if err := table.Start(); err != nil {
+		log.Fatalf("Start failed: %v", err)
+	}
+	defer table.Close()
+	table.Header([]string{"序号", "文件名称", "文件大小(Byte)", "删除时间", "操作人", "原始路径", "目标路径"})
+	errCount := 0
+	var totalSize int64
+	for i, f := range files {
+		err := table.Append([]string{
+			fmt.Sprintf("%d", i+1),
+			f.FileName,
+			fmt.Sprintf("%d", f.FileSize),
+			f.DeletionDate,
+			f.Operator.Username,
+			f.OriginPath,
+			f.TargetPath,
+		})
+		totalSize += f.FileSize
+		if err != nil {
+			errCount++
+			continue
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	table.Footer([]string{"", "", "", "", "", "文件总数量", strconv.Itoa(len(files) - errCount)})
+	table.Footer([]string{"", "", "", "", "", "文件总大小", strconv.FormatInt(totalSize, 10)})
+}
 
 // 判断参数是否为空
 func checkArgsIsEmpty(args []string) bool {
@@ -144,7 +233,7 @@ func checkArgsIsEmpty(args []string) bool {
  * @param transInfoDir 保存文件信息的目录
  * @return 保存成功返回新的文件path和原来的文件文件path
  */
-func saveFileInfoToDisk(file string, transInfoDir string) (string, string) {
+func saveFileInfoToDisk(file string, transInfoDir string) (string, string, os.FileInfo) {
 	oldFileAbs := getFileAbs(file)
 	fmt.Printf("正在将文件 %s 放入回收站...\n", oldFileAbs)
 	// 判断文件是否存在
@@ -158,7 +247,7 @@ func saveFileInfoToDisk(file string, transInfoDir string) (string, string) {
 		fmt.Printf("错误：移动文件 %s 进入回收站失败：%v\n", oldFileAbs, err)
 		os.Exit(1)
 	}
-	return newFilePath, oldFileAbs
+	return newFilePath, oldFileAbs, fileInfo
 }
 
 /**
@@ -166,13 +255,36 @@ func saveFileInfoToDisk(file string, transInfoDir string) (string, string) {
  * @param newFilePath 新文件路径
  * @param logDir 日志保存目录
  */
-func saveLogInfoToDisk(newFilePath string, oldFilePath string, logDir string) {
+func saveLogInfoToDisk(newFilePath string, oldFilePath string, logDir string, fileInfo os.FileInfo) {
 	fmt.Printf("正在保存日志信息...\n")
 	logFileName := fmt.Sprintf("%s.%s", filepath.Base(oldFilePath), trashBackupSuffix)
-	logFileContent := fmt.Sprintf("[ %v ]: originFilePath: {%v},targetPath: {%v}operator: {%s} \n",
-		time.Now().Format("2006-01-02 15:04:05"), oldFilePath, newFilePath, getUserName())
-	// 将文件写入日志文件 todo 后续增加超时重试
-	if err := os.WriteFile(filepath.Join(logDir, logFileName), []byte(logFileContent), 0644); err != nil {
+
+	currentUser := getUserInfo()
+	logFileInfo := &FileLogInfo{
+		FileName:     filepath.Base(oldFilePath),
+		BeginInfo:    fmt.Sprintf("[ %s ]", time.Now().Format("2006-01-02 15:04:05")),
+		DeletionDate: time.Now().Format("2006-01-02 15:04:05"),
+		FileSize:     fileInfo.Size(),
+		OriginPath:   oldFilePath,
+		TargetPath:   newFilePath,
+		Operator:     *currentUser,
+	}
+	logFileContent := utils.ParserToJson(logFileInfo)
+	logFilePath := filepath.Join(logDir, logFileName)
+	// 以追加的形式写入日志文件 todo 后续增加超时重试
+	file, err := os.OpenFile(logFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Printf("错误:打开日志文件失败: %v\n", err)
+		os.Exit(1)
+	}
+	defer func() {
+		err := file.Close()
+		if err != nil {
+			fmt.Printf("错误:关闭日志文件失败: %v\n", err)
+			return
+		}
+	}()
+	if _, err := file.Write(append([]byte(logFileContent), '\n')); err != nil {
 		fmt.Printf("错误:写入日志文件失败: %v\n", err)
 		// 尝试恢复文件
 		os.Rename(newFilePath, oldFilePath)
@@ -201,7 +313,7 @@ func getFileIfo(filePath string) os.FileInfo {
  *
  * @return 当前用户信息
  */
-func getUserName() *user.User {
+func getUserInfo() *user.User {
 	currentUser, err := user.Current()
 	if err != nil {
 		fmt.Printf("获取用户信息失败: %v\n", err)
@@ -225,16 +337,29 @@ func getFileAbs(file string) string {
 }
 
 // 读取文件最后一行
-func readLastLineFromFile(file string) string {
+// @param file为绝对路径
+func readLastLineFromFile(file string) FileLogInfo {
 	cmd := exec.Command("tail", "-n", "-1", file)
 	if cmd == nil {
 		fmt.Printf("错误：创建 tail 命令失败，请重试")
 		os.Exit(1)
 	}
 	stdout, err := cmd.Output()
+	args := cmd.Args
 	if err != nil {
-		fmt.Printf("错误：执行 tail 命令失败，请重试!{%v}", err)
+		command := "tail "
+		for _, arg := range args {
+			command += string(arg) + " "
+		}
+		fmt.Printf("错误：执行 %s 命令失败，请重试!{%v}\n", command, err)
 		os.Exit(1)
 	}
-	return strings.TrimSpace(string(stdout))
+	outInfo := strings.TrimSpace(string(stdout))
+	if outInfo == "" {
+		fmt.Printf("警告：日志文件为空\n")
+		os.Exit(1)
+	}
+	var fileLogInfo FileLogInfo
+	utils.JsonToStruct(outInfo, &fileLogInfo)
+	return fileLogInfo
 }
