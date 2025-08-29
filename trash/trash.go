@@ -23,7 +23,7 @@ const (
 	// trashLogDir 日志目录，用户数据回滚操作
 	trashLogDir = "logs"
 	// defaultTrashBackupDir TRASH_BACKUP_DIR 默认备份目录
-	defaultTrashBackupDir = "backup"
+	defaultTrashBackupDir = ".local/share/backup"
 	// 回收网站备份信息后缀
 	trashBackupSuffix = "backup"
 )
@@ -54,10 +54,10 @@ func getAllTranshDir() []string {
 	}
 	baseDir := filepath.Join(dir, trashDir)
 	return []string{
-		baseDir,                                       // 回收站目录
-		filepath.Join(baseDir, transhFilesDir),        // 实际存放文件的目录
-		filepath.Join(baseDir, trashLogDir),           // 日志目录
-		filepath.Join(baseDir, defaultTrashBackupDir), // 默认备份目录
+		baseDir,                                   // 回收站目录
+		filepath.Join(baseDir, transhFilesDir),    // 实际存放文件的目录
+		filepath.Join(baseDir, trashLogDir),       // 日志目录
+		filepath.Join(dir, defaultTrashBackupDir), // 默认备份目录
 	}
 }
 
@@ -149,7 +149,24 @@ func GetTrashFileList(fileName string) {
 }
 
 // ClearTranshFileInfo 清空回收站
-func ClearTranshFileInfo() {}
+func ClearTranshFileInfo() {
+	allTranshDirs := getAllTranshDir()
+
+	fmt.Printf("是否清空回收站(y/n):")
+	reader := bufio.NewReader(os.Stdin)
+	confirm, _ := reader.ReadString('\n')
+	confirm = strings.TrimSpace(confirm)
+	if confirm != "y" && confirm != "Y" {
+		fmt.Printf("操作已取消\n")
+		os.Exit(0)
+	}
+	fmt.Printf("正在清空回收站...\n")
+	// 将回收站的所有文件压缩到~/.local/share/backup
+	gzipAllTranshFile(allTranshDirs[0], allTranshDirs[3])
+	// 删除回收站文件
+	removeDirAllFiles(allTranshDirs[1], "回收站")
+	removeDirAllFiles(allTranshDirs[2], "日志文件")
+}
 
 // RestoreTranshFile 恢复文件，目前只支持文件不能指定目录
 func RestoreTranshFile(fileNames []string) {
@@ -174,6 +191,50 @@ func BackupTranshFile(backupDir []string) {}
 
 // ===================================== 辅助方法 ================================
 
+// 压缩回收站文件，默认是tar.gz
+// @param dir 回收站根目录
+// @param targetDir 目标目录
+// todo dxg: 后续指定压缩形式、压缩文件以后的文件大小、目录
+func gzipAllTranshFile(dir string, targetDir string) {
+	//getFileIfo(dir)
+
+	if ok := os.MkdirAll(targetDir, 0755); ok != nil {
+		fmt.Printf("错误：创建目录{%v}失败：%v\n", targetDir, ok)
+		os.Exit(1)
+	}
+	timestamp := time.Now().Format("20250829173530")
+	fileName := fmt.Sprintf("transh-back-%v.tar.gz", timestamp)
+
+	command := exec.Command("tar", "-czvf", filepath.Join(targetDir, fileName), "-C", dir, ".")
+	fmt.Printf("压缩命令：tar -czvf %v -C  %v .\n", filepath.Join(targetDir, fileName), dir)
+	if err := command.Run(); err != nil {
+		fmt.Printf("错误：压缩文件失败：%v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("文件压缩成功，文件路径：%s\n", filepath.Join(targetDir, fileName))
+}
+
+// 删除指定目录下所有的文件，
+// todo 待优化,错误日志写到一个统一的日志目录
+func removeDirAllFiles(dir string, message string) {
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		fmt.Printf("错误：读取目录失败：%v\n", err)
+		os.Exit(1)
+	}
+	successCnt, failCnt := 0, 0
+	for _, file := range files {
+		path := filepath.Join(dir, file.Name())
+		if err := os.RemoveAll(path); err != nil {
+			fmt.Printf("错误：删除文件失败：%v\n", err)
+			failCnt++
+			continue
+		}
+		successCnt++
+	}
+	fmt.Printf("删除 %s 文件成功，成功删除文件数：%d   , 失败文件数：%d\n", message, successCnt, failCnt)
+}
+
 func printRecycleBin(files []FileLogInfo) {
 	table := tablewriter.NewWriter(os.Stdout)
 	table.SetHeader([]string{"序号", "文件名称", "文件大小(Byte)", "删除时间", "操作人", "原始路径", "目标路径"})
@@ -189,7 +250,6 @@ func printRecycleBin(files []FileLogInfo) {
 			f.TargetPath,
 		})
 		totalSize += f.FileSize
-		time.Sleep(500 * time.Millisecond)
 	}
 	table.SetFooter([]string{"", "", "", "", "",
 		fmt.Sprintf("文件总数量: %d", len(files)),
