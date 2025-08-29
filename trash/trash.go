@@ -3,7 +3,6 @@ package trash
 import (
 	"bufio"
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
 	"os/user"
@@ -14,7 +13,6 @@ import (
 	"transh/utils"
 
 	"github.com/olekukonko/tablewriter"
-	"github.com/olekukonko/tablewriter/tw"
 )
 
 const (
@@ -146,16 +144,6 @@ func GetTrashFileList(fileName string) {
 		lastFileLogInfo := readLastLineFromFile(fileAbsPath)
 		fileInfos = append(fileInfos, lastFileLogInfo)
 	}
-	//listTitlePrint()
-	//// 格式化输出文件信息
-	//var totalSize int64
-	//for i, fileInfo := range fileInfos {
-	//	totalSize += fileInfo.FileSize
-	//	fmt.Printf("|%v\t|%v\t|%v\t|%v\t|%v\t|%v\t|%v\t|\n",
-	//		i+1, fileInfo.FileName, fileInfo.FileSize, fileInfo.DeletionDate, fileInfo.Operator, fileInfo.OriginPath, fileInfo.TargetPath)
-	//}
-	//// 输出总的文件信息
-	//fmt.Printf("回收站中共有 %v 个文件，总大小为 %v Byte\n", len(fileInfos), totalSize)
 
 	printRecycleBin(fileInfos)
 }
@@ -186,23 +174,12 @@ func BackupTranshFile(backupDir []string) {}
 
 // ===================================== 辅助方法 ================================
 
-// 获取列表的标题输出
-// todo 后期优化输出格式
-func listTitlePrint() {
-	fmt.Printf("|序号\t|文件名称\t|文件大小\t|删除时间\t|操作人\t|原始路径\t|目标路径\t|\n")
-}
-
 func printRecycleBin(files []FileLogInfo) {
-	table := tablewriter.NewTable(os.Stdout, tablewriter.WithStreaming(tw.StreamConfig{Enable: true}))
-	if err := table.Start(); err != nil {
-		log.Fatalf("Start failed: %v", err)
-	}
-	defer table.Close()
-	table.Header([]string{"序号", "文件名称", "文件大小(Byte)", "删除时间", "操作人", "原始路径", "目标路径"})
-	errCount := 0
+	table := tablewriter.NewWriter(os.Stdout)
+	table.SetHeader([]string{"序号", "文件名称", "文件大小(Byte)", "删除时间", "操作人", "原始路径", "目标路径"})
 	var totalSize int64
 	for i, f := range files {
-		err := table.Append([]string{
+		table.Append([]string{
 			fmt.Sprintf("%d", i+1),
 			f.FileName,
 			fmt.Sprintf("%d", f.FileSize),
@@ -212,14 +189,12 @@ func printRecycleBin(files []FileLogInfo) {
 			f.TargetPath,
 		})
 		totalSize += f.FileSize
-		if err != nil {
-			errCount++
-			continue
-		}
 		time.Sleep(500 * time.Millisecond)
 	}
-	table.Footer([]string{"", "", "", "", "", "文件总数量", strconv.Itoa(len(files) - errCount)})
-	table.Footer([]string{"", "", "", "", "", "文件总大小", strconv.FormatInt(totalSize, 10)})
+	table.SetFooter([]string{"", "", "", "", "",
+		fmt.Sprintf("文件总数量: %d", len(files)),
+		fmt.Sprintf("文件总大小: %s", strconv.FormatInt(totalSize, 10))})
+	table.Render()
 }
 
 // 判断参数是否为空

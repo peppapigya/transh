@@ -22,7 +22,9 @@ install_go() {
   go_url="https://golang.google.cn/dl/go1.25.0.linux-amd64.tar.gz"
   go_install_dir="/usr/local/software/"
   while (( cnt >=0 )) ;do
-    wget -O /tmp/go1.25.0.linux-amd64.tar.gz ${go_url}
+    if [ ! -e "/tmp/go1.25.0.linux-amd64.tar.gz" ]; then
+      wget -O /tmp/go1.25.0.linux-amd64.tar.gz ${go_url}
+    fi
     if [ "$?" -eq 0 ]
     then
       echo "从{$go_url},下载go安装包成功,正在安装..."
@@ -31,7 +33,8 @@ install_go() {
          mkdir -p ${go_install_dir}
        fi
       sudo rm -rf ${go_install_dir}/go && tar -C ${go_install_dir} -xzf /tmp/go1.25.0.linux-amd64.tar.gz
-      export PATH=$PATH:${go_install_dir}go/bin
+      echo "export PATH=\$PATH:${go_install_dir}go/bin" >> ~/.bash_profile
+      source ~/.bash_profile
 
       echo "go环境安装成功，go的版本信息：" ${go version}
       return 0
@@ -54,6 +57,8 @@ install_dep(){
     echo "不存在go.mod文件"
     go mod init
   fi
+  # 设置阿里云镜像避免访问不了github
+  go env -w GOPROXY=https://mirrors.aliyun.com/goproxy/,direct
   go mod download
   echo "Done!"
 }
