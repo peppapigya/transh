@@ -142,6 +142,10 @@ func GetTrashFileList(fileName string) {
 		// 获取文件路径信息
 		fileAbsPath := filepath.Join(logDir, file.Name())
 		lastFileLogInfo := readLastLineFromFile(fileAbsPath)
+		// 如果文件不存在，就跳过
+		if _, err := os.Stat(lastFileLogInfo.TargetPath); os.IsNotExist(err) {
+			continue
+		}
 		fileInfos = append(fileInfos, lastFileLogInfo)
 	}
 
@@ -176,7 +180,7 @@ func RestoreTranshFile(fileNames []string) {
 	for _, file := range fileNames {
 		baseFileName := filepath.Base(file)
 		fileInfoPath := filepath.Join(transhDirs[1], baseFileName)
-		logFilePath := filepath.Join(transhDirs[2], baseFileName)
+		logFilePath := filepath.Join(transhDirs[2], removeTimestampFileName(baseFileName))
 		// 检查回收站会否有相应的文件
 		if _, err := os.Stat(fileInfoPath); err != nil {
 			fmt.Printf("错误：回收站没有对应的文件，文件：{%s},错误内容：{%v}\n", file, err)
@@ -205,6 +209,18 @@ func DeleteTranshFile(fileNames []string) {}
 func BackupTranshFile(backupDir []string) {}
 
 // ===================================== 辅助方法 ================================
+
+// 移除文件名后的时间戳
+func removeTimestampFileName(fileName string) string {
+	parts := strings.Split(fileName, ".")
+	if len(parts) > 1 {
+		lastParts := parts[len(parts)-1]
+		if _, err := strconv.ParseInt(lastParts, 10, 64); err == nil {
+			return strings.Join(parts[:len(parts)-1], ".")
+		}
+	}
+	return fileName
+}
 
 // 压缩回收站文件，默认是tar.gz
 // @param dir 回收站根目录
@@ -307,7 +323,7 @@ func saveFileInfoToDisk(file string, transInfoDir string) (string, string, os.Fi
  */
 func saveLogInfoToDisk(newFilePath string, oldFilePath string, logDir string, fileInfo os.FileInfo) {
 	fmt.Printf("正在保存日志信息...\n")
-	logFileName := fmt.Sprintf("%s.%s", filepath.Base(newFilePath), trashLogSuffix)
+	logFileName := fmt.Sprintf("%s.%s", filepath.Base(oldFilePath), trashLogSuffix)
 
 	currentUser := getUserInfo()
 	logFileInfo := &FileLogInfo{
