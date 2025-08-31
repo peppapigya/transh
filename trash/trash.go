@@ -24,8 +24,8 @@ const (
 	trashLogDir = "logs"
 	// defaultTrashBackupDir TRASH_BACKUP_DIR 默认备份目录
 	defaultTrashBackupDir = ".local/share/backup"
-	// 回收网站备份信息后缀
-	trashBackupSuffix = "backup"
+	// 回收站日志文件后缀
+	trashLogSuffix = "log"
 )
 
 // FileLogInfo 文件日志信息，主要是方便提取文件信息
@@ -139,7 +139,7 @@ func GetTrashFileList(fileName string) {
 		if file.IsDir() {
 			continue
 		}
-		// 获取文件路径信息，todo 这里可能会有问题
+		// 获取文件路径信息
 		fileAbsPath := filepath.Join(logDir, file.Name())
 		lastFileLogInfo := readLastLineFromFile(fileAbsPath)
 		fileInfos = append(fileInfos, lastFileLogInfo)
@@ -171,16 +171,31 @@ func ClearTranshFileInfo() {
 // RestoreTranshFile 恢复文件，目前只支持文件不能指定目录
 func RestoreTranshFile(fileNames []string) {
 	transhDirs := getAllTranshDir()
+	var successCount, failCount int
 	// 遍历回收站的内容
 	for _, file := range fileNames {
 		baseFileName := filepath.Base(file)
+		fileInfoPath := filepath.Join(transhDirs[1], baseFileName)
 		logFilePath := filepath.Join(transhDirs[2], baseFileName)
 		// 检查回收站会否有相应的文件
-		if _, err := os.Stat(logFilePath); err != nil {
-			fmt.Printf("错误：回收站没有对应的文件，文件：{%s},错误内容：{%v}", file, err)
-			os.Exit(1)
+		if _, err := os.Stat(fileInfoPath); err != nil {
+			fmt.Printf("错误：回收站没有对应的文件，文件：{%s},错误内容：{%v}\n", file, err)
+			failCount++
+			continue
+		}
+		logFilePath = fmt.Sprintf("%s.%s", logFilePath, trashLogSuffix)
+		// 读取日志信息
+		logFileInfo := readLastLineFromFile(logFilePath)
+		// 将文件还原到原始目录
+		if err := os.Rename(logFileInfo.TargetPath, logFileInfo.OriginPath); err != nil {
+			fmt.Printf("错误：文件还原失败，文件：{%s},错误内容：{%v}\n", file, err)
+			failCount++
+		} else {
+			fmt.Printf("已恢复: %s -> %s\n", logFileInfo.TargetPath, logFileInfo.OriginPath)
+			successCount++
 		}
 	}
+	fmt.Printf("恢复完成，成功数量：%d,失败数量：%d\n", successCount, failCount)
 }
 
 // DeleteTranshFile 删除回收站文件
@@ -292,7 +307,7 @@ func saveFileInfoToDisk(file string, transInfoDir string) (string, string, os.Fi
  */
 func saveLogInfoToDisk(newFilePath string, oldFilePath string, logDir string, fileInfo os.FileInfo) {
 	fmt.Printf("正在保存日志信息...\n")
-	logFileName := fmt.Sprintf("%s.%s", filepath.Base(oldFilePath), trashBackupSuffix)
+	logFileName := fmt.Sprintf("%s.%s", filepath.Base(newFilePath), trashLogSuffix)
 
 	currentUser := getUserInfo()
 	logFileInfo := &FileLogInfo{
