@@ -203,12 +203,59 @@ func RestoreTranshFile(fileNames []string) {
 }
 
 // DeleteTranshFile 删除回收站文件
-func DeleteTranshFile(fileNames []string) {}
+func DeleteTranshFile(fileNames []string) {
+	if len(fileNames) == 0 {
+		fmt.Printf("警告：请输入需要删除的文件\n")
+		os.Exit(0)
+	}
+	allTranshDirs := getAllTranshDir()
+	fmt.Printf("确定要将文件从回收站删除？(y/n)：")
+	reader := bufio.NewReader(os.Stdin)
+	confirm, _ := reader.ReadString('\n')
+	confirm = strings.TrimSpace(confirm)
+	if confirm != "y" && confirm != "Y" {
+		fmt.Printf("操作已取消\n")
+		os.Exit(0)
+	}
+	// 先把数据备份一次，放到~/.local/share/backup下，用于数据恢复
+	gzipAllTranshFile(allTranshDirs[0], allTranshDirs[3])
+	// 类型统计，0是成功，1是失败，2是警告
+	var typeCounts [3]int
+	for _, file := range fileNames {
+		baseFileName := filepath.Base(file)
+		fileInfoPath := filepath.Join(allTranshDirs[1], baseFileName)
+		// 删除文件信息
+		statusType := removeFileByFileAbsPath(fileInfoPath)
+		typeCounts[statusType]++
+		// 删除日志文件
+		logFilePath := filepath.Join(allTranshDirs[2], removeTimestampFileName(baseFileName))
+		logFilePath = fmt.Sprintf("%s.%s", logFilePath, trashLogSuffix)
+		statusType = removeFileByFileAbsPath(logFilePath)
+		typeCounts[statusType]++
+	}
+	fmt.Printf("删除完成，成功数量：%d,失败数量：%d,警告数量：%d\n", typeCounts[0], typeCounts[1], typeCounts[2])
+}
 
 // BackupTranshFile 定期备份回收站文件
 func BackupTranshFile(backupDir []string) {}
 
 // ===================================== 辅助方法 ================================
+
+// 根据文件的绝对路径删除文件
+// @param fileAbsPath 文件的绝对路径
+// @return 0 成功，1 文件不存在，2 删除失败
+func removeFileByFileAbsPath(fileAbsPath string) int {
+	if err := os.Remove(fileAbsPath); err != nil {
+		if os.IsNotExist(err) {
+			fmt.Printf("警告：文件 %s 不存在\n", fileAbsPath)
+			return 1
+		} else {
+			fmt.Printf("错误：文件删除失败，文件：{%s},错误内容：{%v}\n", fileAbsPath, err)
+			return 2
+		}
+	}
+	return 0
+}
 
 // 移除文件名后的时间戳
 func removeTimestampFileName(fileName string) string {
