@@ -72,7 +72,7 @@ main() {
   install_dep
 
   go build -o transh .
-
+  go mod tidy
   if [ "$?" != 0 ];  then
     echo "编译失败"
     exit 1
