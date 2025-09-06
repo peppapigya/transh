@@ -88,7 +88,6 @@ func CreateTranshDir() {
 	trashLogDir := filepath.Join(baseDir, trashLogDir)
 	// 创建目录
 	for _, dir := range []string{baseDir, transhFilesDir, trashLogDir} {
-		// todo 暂定权限为0755
 		if err := os.MkdirAll(dir, 0755); os.IsNotExist(err) {
 			fmt.Printf("创建目录失败 %s: %v\n", dir, err)
 			os.Exit(1)
@@ -196,8 +195,9 @@ func RestoreTranshFile(fileNames []string) {
 		logFilePath = fmt.Sprintf("%s.%s", logFilePath, trashLogSuffix)
 		// 读取日志信息
 		logFileInfo := readLastLineFromFile(logFilePath)
-		// 将文件还原到原始目录
-		if err := os.Rename(logFileInfo.TargetPath, logFileInfo.OriginPath); err != nil {
+		// 将文件还原到原始目录,将文件解压到原始目录
+		command := exec.Command("tar", "-xzf", logFileInfo.TargetPath, "-C", filepath.Dir(logFileInfo.OriginPath))
+		if err := command.Run(); err != nil {
 			fmt.Printf("错误：文件还原失败，文件：{%s},错误内容：{%v}\n", file, err)
 			failCount++
 		} else {

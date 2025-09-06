@@ -68,9 +68,9 @@ main() {
   if ! check_go; then
     exit 1
   fi
-
-  install_dep
   cd /usr/local/transh
+  install_dep
+
   go build -o transh .
   if [ "$?" != 0 ];  then
     echo "编译失败"
