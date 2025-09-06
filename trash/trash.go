@@ -202,8 +202,16 @@ func RestoreTranshFile(fileNames []string) {
 			failCount++
 		} else {
 			fmt.Printf("已恢复: %s -> %s\n", logFileInfo.TargetPath, logFileInfo.OriginPath)
+			// 解压完之后将文件删除
+			if err := os.Remove(logFileInfo.TargetPath); err != nil {
+				fmt.Printf("错误：文件删除失败，文件：{%s},错误内容：{%v}\n", file, err)
+				failCount++
+				os.Exit(1)
+			}
+
 			successCount++
 		}
+
 	}
 	fmt.Printf("恢复完成，成功数量：%d,失败数量：%d\n", successCount, failCount)
 }
