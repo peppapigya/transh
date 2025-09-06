@@ -285,7 +285,7 @@ func gzipAllTranshFile(dir string, targetDir string, oldFileName string) {
 	//getFileIfo(dir)
 	// 如果是压缩文件，说明是将文件压缩放入回收站
 	if oldFileName != "" {
-		command := exec.Command("tar", "-czf", filepath.Join(targetDir, oldFileName), "-C", dir, oldFileName)
+		command := exec.Command("tar", "-czf", targetDir, "-C", dir, oldFileName)
 		if err := command.Run(); err != nil {
 			fmt.Printf("错误：压缩文件失败：%v\n", err)
 			os.Exit(1)
@@ -372,7 +372,7 @@ func saveFileInfoToDisk(file string, transInfoDir string) (string, string, os.Fi
 	newFileName := fmt.Sprintf("%s.%s.tar.gz", fileInfo.Name(), timestamp)
 	newFilePath := filepath.Join(transInfoDir, newFileName)
 	// 将文件写入到回收站目录
-	gzipAllTranshFile(filepath.Dir(oldFileAbs), transInfoDir, filepath.Base(oldFileAbs))
+	gzipAllTranshFile(filepath.Dir(oldFileAbs), newFilePath, filepath.Base(oldFileAbs))
 	return newFilePath, oldFileAbs, fileInfo
 }
 
