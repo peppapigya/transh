@@ -118,6 +118,12 @@ func PutFileToTransh(args []string) {
 		newFilePath, oldFilePath, fileInfo := saveFileInfoToDisk(file, transhDirs[1])
 		// 记录文件的日志信息，todo后续加上目录之后需要加上消息队列去异步写日志，减少用户等待时间
 		saveLogInfoToDisk(newFilePath, oldFilePath, transhDirs[2], fileInfo)
+		// 将源文件删除
+		if err := os.Remove(file); err != nil {
+			fmt.Printf("错误: 删除文件失败: %v\n", err)
+			// 进行压缩包回滚
+			os.Exit(1)
+		}
 	}
 	fmt.Printf("文件放入回收站成功\n")
 }
@@ -166,7 +172,7 @@ func ClearTranshFileInfo() {
 	}
 	fmt.Printf("正在清空回收站...\n")
 	// 将回收站的所有文件压缩到~/.local/share/backup
-	gzipAllTranshFile(allTranshDirs[0], allTranshDirs[3])
+	gzipAllTranshFile(allTranshDirs[0], allTranshDirs[3], "")
 	// 删除回收站文件
 	removeDirAllFiles(allTranshDirs[1], "回收站")
 	removeDirAllFiles(allTranshDirs[2], "日志文件")
@@ -218,7 +224,7 @@ func DeleteTranshFile(fileNames []string) {
 		os.Exit(0)
 	}
 	// 先把数据备份一次，放到~/.local/share/backup下，用于数据恢复
-	gzipAllTranshFile(allTranshDirs[0], allTranshDirs[3])
+	gzipAllTranshFile(allTranshDirs[0], allTranshDirs[3], "")
 	// 类型统计，0是成功，1是失败，2是警告
 	var typeCounts [3]int
 	for _, file := range fileNames {
@@ -237,7 +243,9 @@ func DeleteTranshFile(fileNames []string) {
 }
 
 // BackupTranshFile 定期备份回收站文件
-func BackupTranshFile(backupDir []string) {}
+func BackupTranshFile(backupDir []string) {
+	// todo 定时去备份
+}
 
 // ===================================== 辅助方法 ================================
 
@@ -273,9 +281,17 @@ func removeTimestampFileName(fileName string) string {
 // @param dir 回收站根目录
 // @param targetDir 目标目录
 // todo dxg: 后续指定压缩形式、压缩文件以后的文件大小、目录
-func gzipAllTranshFile(dir string, targetDir string) {
+func gzipAllTranshFile(dir string, targetDir string, oldFileName string) {
 	//getFileIfo(dir)
-
+	// 如果是压缩文件，说明是将文件压缩放入回收站
+	if oldFileName != "" {
+		command := exec.Command("tar", "-czf", filepath.Join(targetDir, oldFileName), "-C", dir, oldFileName)
+		if err := command.Run(); err != nil {
+			fmt.Printf("错误：压缩文件失败：%v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if ok := os.MkdirAll(targetDir, 0755); ok != nil {
 		fmt.Printf("错误：创建目录{%v}失败：%v\n", targetDir, ok)
 		os.Exit(1)
@@ -353,13 +369,10 @@ func saveFileInfoToDisk(file string, transInfoDir string) (string, string, os.Fi
 	fileInfo := getFileIfo(oldFileAbs)
 
 	timestamp := time.Now().Format("20250827151130")
-	newFileName := fmt.Sprintf("%s.%s", fileInfo.Name(), timestamp)
+	newFileName := fmt.Sprintf("%s.%s.tar.gz", fileInfo.Name(), timestamp)
 	newFilePath := filepath.Join(transInfoDir, newFileName)
 	// 将文件写入到回收站目录
-	if err := os.Rename(oldFileAbs, newFilePath); err != nil {
-		fmt.Printf("错误：移动文件 %s 进入回收站失败：%v\n", oldFileAbs, err)
-		os.Exit(1)
-	}
+	gzipAllTranshFile(filepath.Dir(oldFileAbs), transInfoDir, filepath.Base(oldFileAbs))
 	return newFilePath, oldFileAbs, fileInfo
 }
 
