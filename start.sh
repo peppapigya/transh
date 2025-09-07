@@ -59,7 +59,7 @@ install_dep(){
   fi
   # 设置阿里云镜像避免访问不了github
   go env -w GOPROXY=https://mirrors.aliyun.com/goproxy/,direct
-  go mode tidy
+  go mod tidy
   go mod download
   echo "Done!"
 }
