@@ -251,20 +251,24 @@ func DeleteTranshFile(fileNames []string) {
 }
 
 // BackupTranshFile 定期备份回收站文件
-// 默认第一个参数是备份文件所在目录，第二个参数是需要备份的目录
+// 默认第一个参数是需要备份的目录,第二个参数是备份文件所在目录
 func BackupTranshFile(backupDir []string) {
 	fmt.Printf("正在备份回收站文件...\n")
 	transhDirs := getAllTranshDir()
 	// 如果没有指定备份目录，则使用默认目录
 	if backupDir == nil || len(backupDir) == 0 {
-		backupDir = []string{transhDirs[0], transhDirs[3]}
+		backupDir = []string{transhDirs[3], transhDirs[0]}
+	}
+	// 如果只指定目录那么就使用默认目录
+	if len(backupDir) == 1 {
+		backupDir = append(backupDir, transhDirs[0])
 	}
 	if len(backupDir) > 2 {
 		fmt.Printf("错误：备份目录参数错误，请指定备份目录和需要备份的目录\n")
 		os.Exit(1)
 	}
-	gzipAllTranshFile(backupDir[0], backupDir[1], "")
-	fmt.Printf("备份完成,备份目录:%s...\n", backupDir[1])
+	gzipAllTranshFile(backupDir[1], backupDir[0], "")
+	fmt.Printf("备份完成,备份目录:%s...\n", backupDir[0])
 }
 
 // ===================================== 辅助方法 ================================
